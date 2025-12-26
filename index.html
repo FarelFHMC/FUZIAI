@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FUZI</title>
+<style>
+body{margin:0;background:#111;color:#fff;font-family:sans-serif}
+#chat{padding:15px 10px 80px}
+.msg{margin:6px 0;padding:10px;border-radius:10px;max-width:80%}
+.user{background:#00ffcc;color:#000;margin-left:auto}
+.ai{background:#222}
+#bar{position:fixed;bottom:0;left:0;right:0;display:flex;padding:10px;background:#000}
+#bar input{flex:1;border:0;border-radius:10px;padding:10px}
+#bar button{margin-left:5px;border:0;border-radius:50%;width:45px;background:#00ffcc}
+</style>
+</head>
+<body>
+
+<div id="chat"></div>
+
+<div id="bar">
+  <input id="input" placeholder="Ngomong ke FUZI..." />
+  <button onclick="send()">➤</button>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
+import { getFirestore, collection, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
+
+// ====== FIREBASE CONFIG ======
+const firebaseConfig={
+  apiKey:"API_KEY",
+  authDomain:"PROJECT.firebaseapp.com",
+  projectId:"PROJECT",
+  appId:"APP_ID"
+};
+const app=initializeApp(firebaseConfig);
+const db=getFirestore(app);
+const col=collection(db,"learn");
+const chatCol=collection(db,"chatlog");
+
+// ====== FUZI CONFIG ======
+const GOAL = {
+  name:"FUZI",
+  style:"ramah",
+  rule:"jawab singkat, minta diajar kalau tidak tahu"
+};
+
+// Sinonim
+const synonym={
+  halo:["hai","hei","helo"],
+  terima_kasih:["makasih","thanks","thx"]
+};
+
+// Memory lokal
+let memory = {};
+
+// ====== INIT ======
+async function init(){
+  const snap = await getDocs(col);
+  snap.forEach(d=>{
+    const x=d.data();
+    memory[x.key] = x.answers;
+  });
+}
+init();
+
+// ====== HELPER ======
+function normalize(t){
+  t=t.toLowerCase().trim();
+  for(const k in synonym){
+    if(k===t || synonym[k].includes(t)) return k;
+  }
+  return t;
+}
+
+function pick(arr){
+  return arr[Math.floor(Math.random()*arr.length)];
+}
+
+function addMsg(t,c){
+  const d=document.createElement("div");
+  d.className="msg "+c;
+  d.textContent=t;
+  chat.appendChild(d);
+  window.scrollTo(0,document.body.scrollHeight);
+}
+
+// ====== PARSE INPUT ======
+function parseInput(raw){
+  let separator;
+  if(/\d/.test(raw) && /[a-zA-Z]/.test(raw)) separator = "^";   // campuran
+  else if(/\d/.test(raw)) separator = ".";                      // angka
+  else separator = "=";                                         // kata biasa
+  return {parts: raw.split(separator).map(x=>x.trim()), sep: separator};
+}
+
+// ====== SEND ======
+async function send(){
+  const raw=input.value.trim();
+  if(!raw) return;
+  input.value="";
+  addMsg(raw,"user");
+
+  // ==== MODE AJAR ====
+  if(raw.includes("=")||raw.includes(".")||raw.includes("^")){
+    const {parts, sep} = parseInput(raw);
+    if(parts.length<2 || !parts[1]) {
+      addMsg("Jawaban kosong, tidak disimpan","ai");
+      return;
+    }
+    const key = normalize(parts[0]);
+    const ansArr = parts[1].split("|").map(x=>x.trim());
+    memory[key] = ansArr; 
+    await addDoc(col,{key:key,answers:ansArr});
+    addMsg("Aku sudah belajar 👍","ai");
+    return;
+  }
+
+  // ==== MODE JAWAB ====
+  const norm = normalize(raw);
+  if(memory[norm]){
+    addMsg(pick(memory[norm]),"ai");
+  }else{
+    addMsg("Aku belum tau. Ajari aku pakai: kata=jawaban1|jawaban2","ai");
+  }
+
+  // ==== SIMPAN CHAT ====
+  await addDoc(chatCol,{from:"user",text:raw,time:Date.now()});
+}
+
+window.send = send;
+</script>
+
+</body>
+</html>
